@@ -1,0 +1,5 @@
+node_modules/
+backend/smartfarm.db
+*.log
+.DS_Store
+dist/
