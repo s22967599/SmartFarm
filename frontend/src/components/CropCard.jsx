@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { analyseCrop } from '../utils/analysis';
 
 function conditionClass(condition) {
@@ -19,47 +20,98 @@ function conditionClass(condition) {
 
 export default function CropCardDisplay({ result, onEdit, onDelete, onViewHistory }) {
   const { crop, latest_reading, condition, recommended_water, alerts, action } = result;
+  const statusClass = latest_reading
+    ? latest_reading.sensor_status.toLowerCase()
+    : '';
 
   return (
     <article className="crop-card">
       <header className="crop-card-header">
-        <h3>{crop.crop_name}</h3>
-        <span className="location">{crop.location}</span>
+        <div className="crop-card-title">
+          <h3>{crop.crop_name}</h3>
+          <span className="location">{crop.location || '—'}</span>
+        </div>
+        <span className={`sensor-status-pill ${statusClass || 'na'}`}>
+          {latest_reading ? latest_reading.sensor_status : 'N/A'}
+        </span>
       </header>
 
-      <div className="crop-card-settings">
-        <p>Target: {crop.target_min}% – {crop.target_max}%</p>
-        <p>Normal water: {crop.normal_water} L</p>
-        {crop.notes && <p className="notes">Notes: {crop.notes}</p>}
-      </div>
+      <div className="crop-card-body">
+        <section className="crop-card-settings">
+          <p className="section-label">Card settings</p>
+          <dl className="info-list">
+            <div>
+              <dt>Target</dt>
+              <dd>{crop.target_min}% – {crop.target_max}%</dd>
+            </div>
+            <div>
+              <dt>Normal water</dt>
+              <dd>{crop.normal_water} L</dd>
+            </div>
+            <div>
+              <dt>Notes</dt>
+              <dd className={crop.notes ? '' : 'empty-value'}>{crop.notes || '—'}</dd>
+            </div>
+          </dl>
+        </section>
 
-      <div className="crop-card-sensor">
-        {latest_reading ? (
-          <>
-            <p><strong>Latest:</strong> {latest_reading.timestamp}</p>
-            <p>Moisture: {latest_reading.soil_moisture}%</p>
-            <p>Temperature: {latest_reading.temperature} °C</p>
-            <p>Rainfall: {latest_reading.rainfall} mm</p>
-            <p>Status: {latest_reading.sensor_status}</p>
-          </>
-        ) : (
-          <p className="sensor-unavailable">Sensor data: N/A</p>
-        )}
-      </div>
+        <section className="crop-card-sensor">
+          <p className="section-label">Latest sensor</p>
+          {latest_reading ? (
+            <>
+              <p className="timestamp-line">
+                <span>Latest</span>
+                <strong>{latest_reading.timestamp}</strong>
+              </p>
+              <div className="metric-grid">
+                <div className="metric">
+                  <span>Moisture</span>
+                  <strong>{latest_reading.soil_moisture}%</strong>
+                </div>
+                <div className="metric">
+                  <span>Temperature</span>
+                  <strong>{latest_reading.temperature} °C</strong>
+                </div>
+                <div className="metric">
+                  <span>Rainfall</span>
+                  <strong>{latest_reading.rainfall} mm</strong>
+                </div>
+                <div className="metric">
+                  <span>Status</span>
+                  <strong>{latest_reading.sensor_status}</strong>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="sensor-unavailable">Sensor data: N/A</div>
+          )}
+        </section>
 
-      <div className={`condition-badge ${conditionClass(condition)}`}>
-        <p><strong>Condition:</strong> {condition}</p>
-        <p><strong>Recommended:</strong> {recommended_water}</p>
-        {alerts.length > 0 && (
-          <p><strong>Alert:</strong> {alerts.join(', ')}</p>
-        )}
-        <p><strong>Action:</strong> {action}</p>
+        <section className={`condition-badge ${conditionClass(condition)}`}>
+          <p className="condition-title">{condition}</p>
+          <dl className="info-list compact">
+            <div>
+              <dt>Recommended</dt>
+              <dd>{recommended_water}</dd>
+            </div>
+            <div>
+              <dt>Alert</dt>
+              <dd className={alerts.length ? '' : 'empty-value'}>
+                {alerts.length > 0 ? alerts.join(', ') : '—'}
+              </dd>
+            </div>
+            <div>
+              <dt>Action</dt>
+              <dd>{action}</dd>
+            </div>
+          </dl>
+        </section>
       </div>
 
       <div className="crop-card-actions">
         <button type="button" onClick={() => onEdit(crop)}>Edit</button>
         <button type="button" className="btn-danger" onClick={() => onDelete(crop)}>Delete</button>
-        <button type="button" onClick={() => onViewHistory(crop)}>View Sensor History</button>
+        <button type="button" className="btn-ghost" onClick={() => onViewHistory(crop)}>View Sensor History</button>
       </div>
     </article>
   );
@@ -68,7 +120,7 @@ export default function CropCardDisplay({ result, onEdit, onDelete, onViewHistor
 export function SensorHistoryModal({ crop, readings, onClose }) {
   const historyResults = readings.map((reading) => analyseCrop(crop, reading));
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
@@ -89,6 +141,7 @@ export function SensorHistoryModal({ crop, readings, onClose }) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

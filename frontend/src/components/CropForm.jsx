@@ -151,7 +151,7 @@ export default function CropForm({
 
       <div className="form-actions">
         <button type="submit">{mode === 'create' ? 'Create' : 'Save'}</button>
-        <button type="button" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
       </div>
     </form>
   );

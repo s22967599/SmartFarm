@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import CropCardDisplay, { SensorHistoryModal } from './components/CropCard';
 import CropForm from './components/CropForm';
 import * as api from './services/api';
@@ -28,9 +29,12 @@ export default function App() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingCrop, setEditingCrop] = useState(null);
   const [historyCrop, setHistoryCrop] = useState(null);
+  const [deleteCropTarget, setDeleteCropTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const formSectionRef = useRef(null);
 
   const loadCrops = useCallback(async () => {
     const data = await api.fetchCrops();
@@ -78,6 +82,17 @@ export default function App() {
   useEffect(() => {
     initialLoad();
   }, [initialLoad]);
+
+  useEffect(() => {
+    if (!showCreateForm && !editingCrop) return;
+    formSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showCreateForm, editingCrop]);
+
+  useEffect(() => {
+    const modalOpen = Boolean(historyCrop || deleteCropTarget);
+    document.body.classList.toggle('modal-open', modalOpen);
+    return () => document.body.classList.remove('modal-open');
+  }, [historyCrop, deleteCropTarget]);
 
   const dashboardResults = useMemo(() => {
     if (!hasSensorData || !readings) {
@@ -135,15 +150,25 @@ export default function App() {
     }
   }
 
-  async function handleDelete(crop) {
-    if (!window.confirm(`Delete ${crop.crop_name} crop card?`)) return;
+  function requestDelete(crop) {
+    setDeleteCropTarget(crop);
+    setFormError('');
+  }
+
+  async function confirmDelete() {
+    if (!deleteCropTarget) return;
+    setDeleting(true);
     setFormError('');
     try {
-      await api.deleteCrop(crop.id);
+      await api.deleteCrop(deleteCropTarget.id);
       await loadCrops();
-      setSuccessMessage(`${crop.crop_name} crop card deleted.`);
+      setSuccessMessage(`${deleteCropTarget.crop_name} crop card deleted.`);
+      setDeleteCropTarget(null);
     } catch (err) {
       setFormError(err.message);
+      setDeleteCropTarget(null);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -170,20 +195,35 @@ export default function App() {
     <div className="app">
       <header className="dashboard-header">
         <h1>SmartFarm Crop Dashboard</h1>
+        <p className="header-subtitle">GreenFields Farm · crop cards + live sensor feed</p>
         <div className="summary">
-          <p><strong>Overall Status:</strong> <span className={`status-${farmStatus.replace(/\s+/g, '-').toLowerCase()}`}>{farmStatus}</span></p>
-          <p><strong>Crop cards:</strong> {crops.length}</p>
-          <p><strong>Last sensor refresh:</strong> {lastRefresh}</p>
+          <div className="summary-item">
+            <span className="label">Overall Status</span>
+            <span className={`value status-${farmStatus.replace(/\s+/g, '-').toLowerCase()}`}>{farmStatus}</span>
+          </div>
+          <div className="summary-item">
+            <span className="label">Crop cards</span>
+            <span className="value">{crops.length}</span>
+          </div>
+          <div className="summary-item">
+            <span className="label">Last sensor refresh</span>
+            <span className="value">{lastRefresh}</span>
+          </div>
         </div>
         <div className="header-actions">
           <button
             type="button"
-            onClick={() => { setShowCreateForm(true); setFormError(''); setSuccessMessage(''); }}
+            onClick={() => {
+              setEditingCrop(null);
+              setShowCreateForm(true);
+              setFormError('');
+              setSuccessMessage('');
+            }}
             disabled={!hasSensorData || availableCropNames.length === 0}
           >
             Add Crop Card
           </button>
-          <button type="button" onClick={handleRefresh} disabled={refreshing}>
+          <button type="button" className="btn-secondary" onClick={handleRefresh} disabled={refreshing}>
             {refreshing ? 'Refreshing…' : 'Refresh Sensor Data'}
           </button>
         </div>
@@ -203,25 +243,29 @@ export default function App() {
         <div className="banner banner-error">{formError}</div>
       )}
 
-      {showCreateForm && (
-        <CropForm
-          mode="create"
-          availableCropNames={availableCropNames}
-          onSubmit={handleCreate}
-          onCancel={() => { setShowCreateForm(false); setFormError(''); }}
-          error={formError}
-        />
-      )}
+      {(showCreateForm || editingCrop) && (
+        <div ref={formSectionRef} className="form-section">
+          {showCreateForm && (
+            <CropForm
+              mode="create"
+              availableCropNames={availableCropNames}
+              onSubmit={handleCreate}
+              onCancel={() => { setShowCreateForm(false); setFormError(''); }}
+              error={formError}
+            />
+          )}
 
-      {editingCrop && (
-        <CropForm
-          mode="edit"
-          crop={editingCrop}
-          availableCropNames={[]}
-          onSubmit={handleEdit}
-          onCancel={() => { setEditingCrop(null); setFormError(''); }}
-          error={formError}
-        />
+          {editingCrop && (
+            <CropForm
+              mode="edit"
+              crop={editingCrop}
+              availableCropNames={[]}
+              onSubmit={handleEdit}
+              onCancel={() => { setEditingCrop(null); setFormError(''); }}
+              error={formError}
+            />
+          )}
+        </div>
       )}
 
       {crops.length === 0 ? (
@@ -234,8 +278,13 @@ export default function App() {
             <CropCardDisplay
               key={result.crop.id}
               result={result}
-              onEdit={(crop) => { setEditingCrop(crop); setFormError(''); setSuccessMessage(''); }}
-              onDelete={handleDelete}
+              onEdit={(crop) => {
+                setShowCreateForm(false);
+                setEditingCrop(crop);
+                setFormError('');
+                setSuccessMessage('');
+              }}
+              onDelete={requestDelete}
               onViewHistory={(crop) => setHistoryCrop(crop)}
             />
           ))}
@@ -248,6 +297,39 @@ export default function App() {
           readings={getReadingsForCrop(historyCrop.crop_name, readings)}
           onClose={() => setHistoryCrop(null)}
         />
+      )}
+
+      {deleteCropTarget && createPortal(
+        <div className="modal-overlay" onClick={() => !deleting && setDeleteCropTarget(null)}>
+          <div className="confirm-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="confirm-icon" aria-hidden="true">!</div>
+            <h2>Delete crop card?</h2>
+            <p>
+              Remove <strong>{deleteCropTarget.crop_name}</strong>
+              {deleteCropTarget.location ? ` (${deleteCropTarget.location})` : ''} from the dashboard?
+              Sensor readings will stay unchanged.
+            </p>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setDeleteCropTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
