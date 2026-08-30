@@ -32,6 +32,18 @@ app.use(express.json());
 
 initDb();
 
+function isValidRequestBody(body) {
+  return body !== null && body !== undefined && typeof body === 'object' && !Array.isArray(body);
+}
+
+function rejectInvalidBody(req, res) {
+  if (!isValidRequestBody(req.body)) {
+    res.status(400).json({ error: 'Request body must be a JSON object' });
+    return true;
+  }
+  return false;
+}
+
 function isValidTimestamp(ts) {
   if (typeof ts !== 'string' || !TIMESTAMP_REGEX.test(ts)) return false;
   const date = new Date(ts);
@@ -87,6 +99,11 @@ function getValidCropNamesFromSensor() {
 
 function validateCropPayload(body, isCreate) {
   const errors = [];
+
+  if (!isValidRequestBody(body)) {
+    errors.push('Request body must be a JSON object');
+    return errors;
+  }
 
   if (isCreate) {
     if (typeof body.crop_name !== 'string' || !body.crop_name.trim()) {
@@ -161,6 +178,8 @@ app.get('/api/crops/:id', (req, res) => {
 
 app.post('/api/crops', (req, res) => {
   try {
+    if (rejectInvalidBody(req, res)) return;
+
     const errors = validateCropPayload(req.body, true);
     if (errors.length > 0) {
       return res.status(400).json({ error: errors[0] });
@@ -201,6 +220,8 @@ app.post('/api/crops', (req, res) => {
 
 app.put('/api/crops/:id', (req, res) => {
   try {
+    if (rejectInvalidBody(req, res)) return;
+
     const id = Number(req.params.id);
     if (Number.isNaN(id)) {
       return res.status(404).json({ error: 'Crop card not found' });
@@ -257,6 +278,13 @@ app.get('/api/readings', (req, res) => {
   } catch {
     res.status(500).json({ error: 'Sensor data file is invalid' });
   }
+});
+
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ error: 'Invalid JSON body' });
+  }
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(PORT, () => {
