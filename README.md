@@ -74,12 +74,42 @@ Analysis logic lives in `frontend/src/utils/analysis.js`.
 
 ## AI Use (Assignment Requirement)
 
-- **Tool used:** Cursor AI (Claude)
-- **Sensor JSON prompt:** See Assignment Section 16 — generated 20 readings with 5 per crop, mixed order, one intentional invalid older Wheat reading, and latest cases for Dry Tomato, Healthy Lettuce, Too Wet Wheat, and Faulty Maize.
-- **Correction made:** Verified timestamps are distinct within each crop and that the invalid Wheat reading (soil_moisture 120) is not the latest for Wheat.
-- **Matching verified:** Frontend uses strict equality (`===`) on `crop_name`.
-- **Latest timestamp verified:** Readings sorted with `localeCompare` on timestamp; array order is mixed.
-- **Implementation decision:** Used `better-sqlite3` for synchronous SQLite access and Vite dev proxy to avoid CORS setup during development.
+### Tool used
+Cursor AI (Claude)
+
+### Final sensor JSON prompt
+
+```
+Generate a valid JSON array containing exactly 20 simulated SmartFarm sensor readings.
+Use these crop_name values exactly and create exactly 5 readings for each:
+Tomato, Lettuce, Wheat, Maize.
+Every object must contain exactly these fields:
+crop_name, timestamp, soil_moisture, temperature, rainfall, sensor_status, notes.
+Use timestamps in YYYY-MM-DDTHH:mm:ss format. Timestamps must be distinct
+within each crop. The same timestamp may be used by different crops. Mix the
+array order so the latest reading is not always the last object.
+Use sensor_status only as Online, Offline or Faulty. Most numeric values must
+be realistic: soil_moisture 0-100, temperature 0-50, rainfall 0-50. Include
+exactly one structurally valid older reading with one deliberately out-of-range
+numeric value. That invalid reading must not be the latest reading for its crop.
+Make the latest readings produce these cases with the default Crop Card settings:
+- latest Tomato: Online, Dry, temperature above 35 C;
+- latest Lettuce: Online and Healthy;
+- latest Wheat: Online, Too Wet, rainfall at least 5 mm;
+- latest Maize: sensor_status Faulty.
+Return only the JSON array. Do not use Markdown or explanation.
+```
+
+### Manual correction made
+After AI generation, I verified and corrected the file until all checks passed. One correction was ensuring timestamps are distinct within each crop and that the intentional invalid Wheat reading (`soil_moisture: 120` at `2026-08-01T09:00:00`) is not the latest reading for Wheat — the latest Wheat reading is `2026-08-06T09:00:00` (Too Wet, rainfall 8 mm).
+
+### Verification
+- **crop_name matching:** Frontend uses strict equality (`===`) on `crop_name` — case-sensitive, exact match only.
+- **Latest timestamp:** `getLatestReading()` filters by crop, then sorts with `localeCompare` on timestamp descending — works regardless of JSON array order.
+- **Latest cases verified:** Tomato = Dry + High temperature; Lettuce = Healthy; Wheat = Too Wet + Rain detected; Maize = Sensor Problem (Faulty).
+
+### Implementation decision
+Used `better-sqlite3` for synchronous SQLite access on server startup (schema + seed in one place) and a Vite dev proxy so the frontend can call `/api` without extra CORS configuration during development.
 
 ## Project Limitation
 
